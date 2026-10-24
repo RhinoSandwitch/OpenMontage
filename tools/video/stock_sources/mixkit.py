@@ -29,6 +29,20 @@ _SEARCH_URL = "https://mixkit.co/free-stock-video/"
 _LICENSE = "Mixkit License (free for commercial and personal use, no attribution required)"
 
 
+def _ld_dimension(value: Any) -> int:
+    """Pixel size from a schema.org width/height (number, "1920", "1920 px",
+    or a QuantitativeValue). Returns 0 when absent or unparseable."""
+    if isinstance(value, dict):
+        value = value.get("value")
+    if isinstance(value, (int, float)):
+        return max(0, int(value))
+    if isinstance(value, str):
+        match = re.match(r"\s*(\d+)", value)
+        if match:
+            return int(match.group(1))
+    return 0
+
+
 class MixkitSource:
     """Mixkit video adapter. Satisfies `StockSource`."""
 
@@ -164,7 +178,6 @@ class MixkitSource:
                     continue
                 href = (node.get("@id") or "").split("#", 1)[0]
                 clip_id = href.rstrip("/").rsplit("-", 1)[-1] if href else content_url
-                hd = "-1080." in content_url
                 out.append(
                     Candidate(
                         source=self.name,
@@ -172,8 +185,10 @@ class MixkitSource:
                         source_url=href or content_url,
                         download_url=content_url,
                         kind="video",
-                        width=1920 if hd else 1280,
-                        height=1080 if hd else 720,
+                        # Only trust declared dimensions; the "-1080" filename suffix
+                        # says nothing about orientation. 0 = unknown until probed.
+                        width=_ld_dimension(node.get("width")),
+                        height=_ld_dimension(node.get("height")),
                         duration=0.0,
                         creator="Mixkit",
                         license=_LICENSE,
